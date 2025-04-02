@@ -4,6 +4,8 @@ on: workflow_dispatch
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build-and-deploy:
@@ -13,35 +15,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        name: Install pnpm
-        with:
-          version: 10
-          run_install: false
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'pnpm'
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          version: 10
+          run_install: false
+
       - name: Install dependencies
         run: pnpm install
 
       - name: Build
-        run: ./node_modules/.bin/vite build
+        run: ./node_modules/.bin/vite build -c viteconfig.js
 
-      - name: Checkout & clean
-        run: |
-          git checkout build || git checkout --orphan build
-          git reset
-          git clean -xdf -e "/dist"
-          mv dist/* .
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
 
-      - name: Commit and push to build branch
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add -A
-          git commit -m "build"
-          git push origin build
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
