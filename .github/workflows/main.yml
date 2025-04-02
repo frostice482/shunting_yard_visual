@@ -33,11 +33,10 @@ jobs:
 
       - name: Checkout & clean
         run: |
-          git checkout build || git checkout -b build
-          git clean -df
-
-      - name: Move dist
-        run: mv dist/* .
+          git checkout build || git checkout --orphan build
+          git reset
+          git clean -xdf -e "/dist"
+          mv dist/* .
 
       - name: Commit and push to build branch
         run: |
