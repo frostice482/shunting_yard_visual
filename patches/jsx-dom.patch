@@ -1,0 +1,30 @@
+diff --git a/index.js b/index.js
+index db75f0b824cd8c0732981542dd0f0b06fb5e2ec5..b6c957434435b4c4b68c8e61595126afef253cbe 100644
+--- a/index.js
++++ b/index.js
+@@ -350,7 +350,9 @@ function appendChild(child, node) {
+   if (isArrayLike(child)) {
+     appendChildren(child, node);
+   } else if (isString(child) || isNumber(child)) {
+-    appendChildToNode(document.createTextNode(child), node);
++    const lastChild = node.lastChild
++    if (lastChild?.nodeType === 3) lastChild.data += child
++    else appendChildToNode(document.createTextNode(child), node);
+   } else if (child === null) {
+     appendChildToNode(document.createComment(""), node);
+   } else if (isElement(child)) {
+diff --git a/types/index.d.ts b/types/index.d.ts
+index 9c5a15089d9140c27e48ee48d5bd0b603be1b86b..424d5dfaa7a69e525a1f98bf8c3b060772e40c72 100644
+--- a/types/index.d.ts
++++ b/types/index.d.ts
+@@ -112,9 +112,7 @@ export type ReactNode =
+   | Iterable<ReactNode>
+   | ReactChildren
+   | ShadowRootContainer
+-  | DocumentFragment
+-  | Text
+-  | Comment
++  | Node
+   | boolean
+   | null
+   | undefined

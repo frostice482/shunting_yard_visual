@@ -1,0 +1,106 @@
+@use "sass:list";
+
+.reset-font {
+	font-family: inherit;
+	font-size: inherit;
+	font-weight: inherit;
+	color: inherit;
+}
+
+.reset-style {
+	background: unset;
+	border: unset;
+}
+
+body {
+	margin: 0;
+	padding: 16px 32px;
+	box-sizing: border-box;
+	background: #070713;
+
+	font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+	color: white;
+
+	display: flex;
+	flex-direction: column;
+}
+
+h1, h2, h3, h4, h5, h6 {
+	margin: 4px 0;
+}
+
+input, button {
+	@extend .reset-font, .reset-style;
+	border: 1px solid white;
+	border-radius: 0.25em;
+}
+
+button {
+	cursor: pointer;
+}
+
+code {
+	white-space: pre;
+	font-family: monospace;
+	font-size: 1.2em;
+}
+
+table {
+	& > thead > tr > td {
+		padding: 3px 4px;
+		border-bottom: 1px solid white;
+		background: #77f3;
+	}
+	& > tbody > tr:nth-child(2n) {
+		background: #ffffff0b;
+	}
+	& > :is(tbody, tfoot) > tr > td {
+		padding: 1px 4px;
+	}
+}
+
+a, a:visited { color: unset; }
+
+.fill, .fill-x { width: 100%; }
+.fill, .fill-y { height: 100%; }
+
+.margin-y { margin-top: 8px; margin-bottom: 8px; }
+.margin-x { margin-left: 8px; margin-right: 8px; }
+
+.process {
+	margin: 8px 0;
+	padding: 8px 0;
+	border-top: 1px solid white;
+	border-bottom: 1px solid white;
+}
+
+.flex-row { display: flex; }
+.flex-col { display: flex; flex-direction: column; }
+.gap-4 { gap: 4px }
+.gap-8 { gap: 8px }
+
+.justify-center { justify-content: center; }
+
+.flex-sep {
+	flex: 1 1;
+}
+
+.error {
+	color: red;
+}
+
+.tokens-list > * {
+	padding: 0 0.5px;
+	margin: 0 1.75px;
+}
+
+.token-error { color: red; text-decoration: orange wavy underline; }
+.token-number { color: #7fb; }
+.token-variable { color: #55f; }
+.token-funcCall { color: #ff7; }
+.token-operator {}
+
+.token-inactive { color: #bbb }
+.token-hl { background: #fff3; text-decoration: #fff underline; }
+.token-hl-blue { background: #77b7; text-decoration: #77b underline; }
+.token-hl-red { background: #b777; text-decoration: #b77 underline; }
