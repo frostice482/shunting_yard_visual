@@ -1,0 +1,41 @@
+name: Build and Deploy
+
+on: workflow_dispatch
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: ./node_modules/.bin/vite build
+
+      - name: Checkout & clean
+        run: |
+          git checkout build || git checkout -b build
+          git clean -df
+
+      - name: Move dist
+        run: mv dist/* .
+
+      - name: Commit and push to build branch
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add -A
+          git commit -m "build"
+          git push origin build
