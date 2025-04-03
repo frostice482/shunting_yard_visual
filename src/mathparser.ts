@@ -79,7 +79,7 @@ const mathTokenizer = new Tokenizer([{
 }, {
 	name: 'operatorToken',
 	sourceName: 'operator',
-	pattern: /[-+*/&|×÷]|<<|>>/y,
+	pattern: /[-+*/&|×÷^]|<<|>>/y,
 	next: ['value']
 }, {
 	name: 'value',
