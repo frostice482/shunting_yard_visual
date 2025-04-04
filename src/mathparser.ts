@@ -212,7 +212,7 @@ export class MathParser {
 						if (stepping) yield step('popMoveOpStack', 'Pop until open bracket is found', lastOp)
 					}
 					if (!lastOp) {
-						if (!inline) return error(`Expecting EOF`)
+						if (!inline) return error(`Expecting "(" at operator stack, got null`)
 						break loop;
 					}
 				} break
@@ -222,6 +222,19 @@ export class MathParser {
 				break
 				default:
 					return error('Unknown token')
+			}
+		}
+
+		const remainingBracket = opstack.findLast(v => v.source === 'closeBracket' || v.source === 'openBracket')
+		if (remainingBracket) {
+			// should implement indexOf()
+			let tokenIndex = -1
+			for (let i = 0; i < tokens.length; i++) if (tokens[i] === remainingBracket) tokenIndex = 0
+			return {
+				error: true,
+				index: tokenIndex,
+				token: remainingBracket,
+				message: 'Unexpected bracket'
 			}
 		}
 
