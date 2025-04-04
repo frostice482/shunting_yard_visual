@@ -45,7 +45,7 @@ code {
 	font-size: 1.2em;
 }
 
-table {
+table.styled {
 	& > thead > tr > td {
 		padding: 3px 4px;
 		border-bottom: 1px solid white;
@@ -60,6 +60,20 @@ table {
 }
 
 a, a:visited { color: unset; }
+
+details {
+	padding: 8px;
+	box-sizing: border-box;
+
+	border: 1px solid #555;
+	border-radius: 0.25em;
+
+	&:open > summary {
+		margin-bottom: 0.5em;
+		padding-bottom: 0.5em;
+		border-bottom: 1px solid #777;
+	}
+}
 
 .fill, .fill-x { width: 100%; }
 .fill, .fill-y { height: 100%; }
