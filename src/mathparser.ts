@@ -38,6 +38,7 @@ const operatorInit: Array<Record<string, Omit<MathParser.Operator, 'level'>>> = 
 	}, {
 		'+': {fn: (a, b) => a + b},
 		'-': {fn: (a, b) => a - b},
+		'–': {fn: (a, b) => a - b},
 	}, {
 		'<<':{fn:  (a, b) => a << b},
 		'>>':{fn:  (a, b) => a >> b},
@@ -82,7 +83,7 @@ const mathTokenizer = new Tokenizer([{
 }, {
 	name: 'operatorToken',
 	sourceName: 'operator',
-	pattern: /[-+*/&|×÷^]|<<|>>/y,
+	pattern: RegExp('', 'y'),
 	next: ['value']
 }, {
 	name: 'value',
@@ -96,7 +97,22 @@ const mathTokenizer = new Tokenizer([{
 	ignore: true
 }], undefined, 'value')
 
+const regexEscape = /[+*?\^$\\.[\]{}()|]/g
+const regexCharsetEscape = /[\\\-\]\^]/g
+
 export class MathParser {
+	static getOperatorRegexPattern(operators: readonly string[]) {
+		const single = []
+		const notSingle = []
+
+		for (const op of operators) {
+			if (op.length === 1) single.push(op)
+			else notSingle.push(op.replace(regexEscape, '\\$&'))
+		}
+
+		return RegExp(notSingle.sort((a,b) => b.length - a.length).join('|') + `|[${single.join('').replace(regexCharsetEscape, '\\$&')}]`, 'y')
+	}
+
 	functions = {...functions}
 	constants = {...constants}
 	operators = {...operators}
@@ -496,6 +512,10 @@ export class MathParser {
 		}
 	}
 }
+
+mathTokenizer.syntaxes.get('operatorToken')!.pattern = MathParser.getOperatorRegexPattern(Object.keys(operators))
+
+console.log(mathTokenizer.syntaxes.get('operatorToken'))
 
 const mathParser = new MathParser
 export default mathParser
