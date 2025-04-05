@@ -107,20 +107,20 @@ export class MathParser {
 		return this.tokenizer.parse(expr) as Tokenizer.Result<MathParser.Token>
 	}
 
-	iterateBuildRPN(tokens: ArrayLike<MathParser.Token>) {
-		return this.internalBuildRPN(tokens, true)
+	iterateBuildNotation(tokens: ArrayLike<MathParser.Token>, pn = false) {
+		return pn ? this.internalBuildPN(tokens, true) : this.internalBuildRPN(tokens, true)
 	}
 
-	iterateEvaluateRPN(rpn: ArrayLike<MathParser.Token>) {
-		return this.internalEvaluateRPN(rpn, true)
+	iterateEvaluateNotation(notation: ArrayLike<MathParser.Token>, pn = false) {
+		return this.internalEvaluateNotation(notation, pn, true)
 	}
 
-	buildRPN(tokens: ArrayLike<MathParser.Token>) {
-		return getReturnValue(this.internalBuildRPN(tokens))
+	buildNotation(tokens: ArrayLike<MathParser.Token>, pn = false) {
+		return getReturnValue(pn ? this.internalBuildPN(tokens) : this.internalBuildRPN(tokens))
 	}
 
-	evaluateRPN(rpn: ArrayLike<MathParser.Token>) {
-		return getReturnValue(this.internalEvaluateRPN(rpn))
+	evaluateNotatiom(notation: ArrayLike<MathParser.Token>, pn = false) {
+		return getReturnValue(this.internalEvaluateNotation(notation, pn))
 	}
 
 	isEvaluable(tokens: ArrayLike<MathParser.Token>): true | MathParser.Token {
@@ -140,7 +140,7 @@ export class MathParser {
 
 	protected *internalBuildRPN(tokens: ArrayLike<MathParser.Token>, stepping = false): Generator<MathParser.NotationStep, MathParser.NotationResult> {
 		const opstack: MathParser.Token[] = []
-		const rpn: MathParser.Token[] = []
+		const notation: MathParser.Token[] = []
 
 		const bracketStack: number[] = []
 
@@ -152,7 +152,7 @@ export class MathParser {
 				case 'number':
 				case 'variable':
 				case 'funcCall':
-					rpn.push(token)
+					notation.push(token)
 					if (stepping) yield step('insertValue')
 
 					if (token.source === 'funcCall' && tokens[i+1]?.source !== 'openBracket') return error(`Expecting open bracket`, i+1)
@@ -172,7 +172,7 @@ export class MathParser {
 						&& (lastOpData.rtl ? lastOpData.level < level : lastOpData.level <= level) // difference in precedence
 					) {
 						opstack.pop()
-						rpn.push(lastOp)
+						notation.push(lastOp)
 						if (stepping) yield step('popMoveOpStack', `Higher precedence: ${op} (${level}) ${lastOpData.rtl ? '>' : '>='} ${lastOp.token} (${lastOpData.level})`, lastOp)
 					}
 
@@ -182,7 +182,7 @@ export class MathParser {
 
 				case 'openBracket':
 					opstack.push(token)
-					bracketStack.push(rpn.length)
+					bracketStack.push(notation.length)
 					if (stepping) yield step('insertOpStack', 'Inserting open bracket')
 				break
 
@@ -193,9 +193,9 @@ export class MathParser {
 					const r = yield* popStackUntilBracket(true)
 					if (r) return r
 
-					const fnCall = rpn[lastBracket-1]
+					const fnCall = notation[lastBracket-1]
 					if (fnCall?.source === 'funcCall' && bracketStack.at(-1) !== lastBracket) {
-						fnCall.params.push(rpn.splice(lastBracket))
+						fnCall.params.push(notation.splice(lastBracket))
 						if (stepping) yield step('updateParams', undefined, fnCall)
 					}
 				} break
@@ -203,13 +203,13 @@ export class MathParser {
 				case 'argumentSeparator': {
 					const lastBracket = bracketStack.at(-1)
 					if (lastBracket === undefined) return error(`Unexpected ","`)
-					const fnCall = rpn[lastBracket-1]
+					const fnCall = notation[lastBracket-1]
 					if (!fnCall || fnCall.source !== 'funcCall') return error(`Unexpected ","`)
 
 					const r = yield* popStackUntilBracket(false)
 					if (r) return r
 
-					fnCall.params.push(rpn.splice(lastBracket))
+					fnCall.params.push(notation.splice(lastBracket))
 				} break
 
 				default:
@@ -217,18 +217,18 @@ export class MathParser {
 			}
 		}
 
-		if (!stepping) rpn.push(...opstack.reverse())
+		if (!stepping) notation.push(...opstack.reverse())
 		else {
 			while (opstack.length) {
 				const op = opstack.pop()!
-				rpn.push(op)
+				notation.push(op)
 				yield step('popMoveOpStack', 'Leftover operator', op)
 			}
 		}
 
 		return {
 			error: false,
-			notation: rpn
+			notation: notation
 		}
 
 		function error(msg: string, index = i, token: MathParser.Token | undefined = tokens[index]): MathParser.NotationError {
@@ -242,7 +242,7 @@ export class MathParser {
 
 		function step(type: MathParser.NotationStepType, description = '', token = tokens[i]!): MathParser.NotationStep {
 			return {
-				notation: rpn,
+				notation: notation,
 				opstack,
 				type,
 				index: i,
@@ -255,7 +255,7 @@ export class MathParser {
 		function* popStackUntilBracket(popOpen = false) {
 			let lastOp
 			while ((lastOp = opstack.at(-1)) && lastOp.source !== 'openBracket') {
-				rpn.push(lastOp)
+				notation.push(lastOp)
 				opstack.pop()
 				if (stepping) yield step('popMoveOpStack', 'Pop until open bracket is found', lastOp)
 			}
@@ -267,14 +267,152 @@ export class MathParser {
 		}
 	}
 
-	protected *internalEvaluateRPN(rpn: ArrayLike<MathParser.Token>, stepping = false, inner = false): Generator<MathParser.EvalStep, number | MathParser.EvalError> {
+	protected *internalBuildPN(tokens: ArrayLike<MathParser.Token>, stepping = false): Generator<MathParser.NotationStep, MathParser.NotationResult> {
+		const opstack: MathParser.Token[] = []
+		const notation: MathParser.Token[] = []
+
+		let prevBracket = 0
+		const bracketStack: number[] = []
+
+		let i = tokens.length-1
+		loop:
+		for (; i >= 0; i--) {
+			const token = tokens[i]!
+			switch (token.source) {
+				case 'argumentSeparator': {
+					if (!bracketStack.length) return error(`Unexpected ","`)
+
+					const r = yield* popStackUntilBracket(false)
+					if (r) return r
+				} //break // fallthrough
+
+				case 'number':
+				case 'variable':
+					notation.push(token)
+					if (stepping) yield step('insertValue')
+				break
+
+				case 'operator':
+					const op = token.token
+					const level = this.operators[op]?.level
+					if (level === undefined) return error(`Invalid operator "${op}"`)
+
+					if (stepping) yield step('lookup')
+
+					let lastOp, lastOpData
+					while (
+						(lastOp = opstack.at(-1)) !== undefined // there is operator in the stack
+						&& (lastOpData = this.operators[lastOp.token]) !== undefined // operator has level
+						&& (lastOpData.rtl ? lastOpData.level <= level : lastOpData.level < level) // difference in precedence
+					) {
+						opstack.pop()
+						notation.push(lastOp)
+						if (stepping) yield step('popMoveOpStack', `Higher precedence: ${op} (${level}) ${lastOpData.rtl ? '>=' : '>'} ${lastOp.token} (${lastOpData.level})`, lastOp)
+					}
+
+					opstack.push(token)
+					if (stepping) yield step('insertOpStack')
+				break
+
+				case 'closeBracket':
+					opstack.push(token)
+					bracketStack.push(notation.length)
+					if (stepping) yield step('insertOpStack', 'Inserting close bracket')
+				break
+
+				case 'openBracket': {
+					const lastBracket = bracketStack.pop()
+					if (lastBracket === undefined) return error(`Unexpected "("`)
+
+					const r = yield* popStackUntilBracket(true)
+					if (r) return r
+
+					prevBracket = lastBracket
+				} break
+
+				case 'funcCall': {
+					if (tokens[i+1]?.source !== 'openBracket') return error(`Expecting "("`, i+1)
+
+					const args = notation.splice(prevBracket)
+
+					console.log('spliace', prevBracket, args)
+
+					let x = 0
+					while ((x = args.findIndex(tok => tok.source === 'argumentSeparator')) !== -1) {
+						token.params.unshift(args.splice(0, x))
+						args.shift()
+					}
+
+					token.params.unshift(args)
+
+					notation.push(token)
+					if (stepping) yield step('insertValue')
+					if (stepping) yield step('updateParams')
+				} break
+
+				default:
+					return error('Unknown token')
+			}
+		}
+
+		if (!stepping) notation.push(...opstack.reverse())
+		else {
+			while (opstack.length) {
+				const op = opstack.pop()!
+				notation.push(op)
+				yield step('popMoveOpStack', 'Leftover operator', op)
+			}
+		}
+
+		return {
+			error: false,
+			notation: notation.reverse()
+		}
+
+		function error(msg: string, index = i, token: MathParser.Token | undefined = tokens[index]): MathParser.NotationError {
+			return {
+				error: true,
+				message: msg,
+				token: token,
+				index: index
+			}
+		}
+
+		function step(type: MathParser.NotationStepType, description = '', token = tokens[i]!): MathParser.NotationStep {
+			return {
+				notation: notation,
+				opstack,
+				type,
+				index: i,
+				token,
+				insertingToken: tokens[i],
+				description: description
+			}
+		}
+
+		function* popStackUntilBracket(popOpen = false) {
+			let lastOp
+			while ((lastOp = opstack.at(-1)) && lastOp.source !== 'closeBracket') {
+				notation.push(lastOp)
+				opstack.pop()
+				if (stepping) yield step('popMoveOpStack', 'Pop until open bracket is found', lastOp)
+			}
+			if (!lastOp) return error(`Expecting ")" at operator stack, got null`)
+			if (popOpen) {
+				opstack.pop()
+				if (stepping) yield step('popOpStack', 'Close bracket is not included in PN', lastOp)
+			}
+		}
+	}
+
+	protected *internalEvaluateNotation(notation: ArrayLike<MathParser.Token>, isPN = false, stepping = false, inner = false): Generator<MathParser.EvalStep, number | MathParser.EvalError> {
 		const valueStack: number[] = []
-		let i = 0
+		let i = isPN ? notation.length-1 : 0
 
 		if (inner && stepping) yield step('updateStack', 0)
 
-		for (; i < rpn.length; i++) {
-			const token = rpn[i]!
+		for (; isPN ? i >= 0 : i < notation.length; i += isPN ? -1 : 1) {
+			const token = notation[i]!
 			let v = 0
 			switch (token.source) {
 
@@ -295,8 +433,8 @@ export class MathParser {
 					if (!fn) return error(`Unknown function ${token.token}`)
 
 					const args = []
-					for (const rpn of token.params) {
-						let itr = this.internalEvaluateRPN(rpn, stepping, true)[Symbol.iterator]()
+					for (const notation of token.params) {
+						let itr = this.internalEvaluateNotation(notation, isPN, stepping, true)[Symbol.iterator]()
 						let itrRes
 						while (!(itrRes = itr.next()).done) yield itrRes.value
 						const res = itrRes.value
@@ -319,7 +457,7 @@ export class MathParser {
 					const op = this.operators[token.token]
 					if (!op) return error(`Unknown operator "${token.token}"`)
 
-					v = op.fn(v1, v2)
+					v = isPN ? op.fn(v2, v1) : op.fn(v1, v2)
 					if (stepping) yield step('operation', v)
 
 					valueStack.pop()
@@ -341,7 +479,7 @@ export class MathParser {
 			return {
 				error: true,
 				message: msg,
-				token: rpn[i]!,
+				token: notation[i]!,
 				valueStack
 			}
 		}
@@ -349,7 +487,7 @@ export class MathParser {
 		function step(type: MathParser.EvalStepType, value: number): MathParser.EvalStep {
 			return {
 				index: i,
-				token: rpn[i]!,
+				token: notation[i]!,
 				valueStack,
 				type,
 				value,

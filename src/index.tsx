@@ -9,6 +9,7 @@ const resultElm = nodeState()
 let updateInterval = inputState<number>(100)
 let paused = false
 let prm = new PromiseController<void>()
+let mode = inputState<'rpn' | 'pn'>('rpn')
 
 const links = [
 	['Shunting Yard', 'https://en.wikipedia.org/wiki/Shunting_yard_algorithm'],
@@ -18,19 +19,31 @@ const links = [
 ]
 
 document.body.append(<>
-	<h2>Shunting Yard Visualizer</h2>
-	<div class="flex-row gap-4">
-		Input: <input style={{flex: '1 1'}} type="text" onChange={inputExpr.input} value={inputExpr()}/>
-		Interval: <input style={{flex: '0.1 1', minWidth: '60px'}} type="number" min={1} onChange={updateInterval.input} value={updateInterval()}/> ms
-	</div>
-	<div class="flex-row gap-8 justify-center margin-y">
-		<button onClick={startProcess}>start</button>
-		<StateButton textState="pause" onClick={(ev, state) => {
-			paused = !paused
-			if (!paused) step()
-			state(paused ? 'resume' : 'pause')
-		}}/>
-		<button onClick={step}>step</button>
+	<div class="flex-col align-center gap-8">
+		<div class="fill-x flex-row">
+			Input: <input class="fill-x" type="text" onChange={inputExpr.input} value={inputExpr()}/>
+		</div>
+		<div class="flex-row gap-8">
+			<span>
+				Interval:
+				<input style={{width: '60px'}} type="number" min={1} onChange={updateInterval.input} value={updateInterval()}/>
+				ms
+			</span>
+			<span>
+				Mode:
+				<select onChange={mode.input} value={mode()}>
+					<option value="rpn">RPN</option>
+					<option value="pn">PN</option>
+				</select>
+			</span>
+			<button onClick={startProcess}>start</button>
+			<StateButton textState="pause" onClick={(ev, state) => {
+				paused = !paused
+				if (!paused) step()
+				state(paused ? 'resume' : 'pause')
+			}}/>
+			<button onClick={step}>step</button>
+		</div>
 	</div>
 	{resultElm()}
 	<div class="flex-sep"/>
@@ -38,6 +51,7 @@ document.body.append(<>
 		<ul>
 			{links.map(([name, link]) => <li><a href={link} target="_blank">{name}</a></li>)}
 		</ul>
+		<h2>Shunting Yard Visualizer</h2>
 	</footer>
 </>)
 
@@ -54,6 +68,7 @@ function step() {
 }
 
 function* process() {
+	const isPN = mode() === 'pn'
 	const tokensElm = TokenList({})
 	const notationElm = TokenList({})
 	const opstackElm = TokenList({})
@@ -68,7 +83,7 @@ function* process() {
 		<Table class="process fill" colWidths={['8em', '10px']}>
 			<tbody>
 				{RowNameValue('Input', tokensElm)}
-				{RowNameValue('RPN', notationElm)}
+				{RowNameValue(isPN ? 'PN' : 'RPN', notationElm)}
 				{RowNameValue('Operator stack', opstackElm)}
 				{RowNameValue('Result stack', resultStackElm)}
 			</tbody>
@@ -81,7 +96,7 @@ function* process() {
 		</div>
 
 		<details class="fill-x">
-			<summary>RPN Log</summary>
+			<summary>{isPN ? 'PN' : 'RPN'} Log</summary>
 			<Table fillX colWidths={['5%', '40%', '15%', '15%', '25%']} headTitles={['Input', 'RPN', 'Operator Stack', 'Action', 'Description']}>
 				{notationLog}
 			</Table>
@@ -91,12 +106,12 @@ function* process() {
 	const a = yield* processTokenParse(tokensElm)
 	if (a.error) return errorText(a.message)
 
-	const b = yield* processNotationBuilder(a.tokens, a.tokensElmList, notationElm, opstackElm, notationLog, updateText)
+	const b = yield* processNotationBuilder(a.tokens, a.tokensElmList, notationElm, opstackElm, notationLog, updateText, isPN)
 	if (b.error) return errorText(b.message)
 
 	const e = mathParser.isEvaluable(a.tokens)
 	if (e === true) {
-		const c = yield* processEval(b.notation, a.tokensElmList, b.notationElmList, resultStackElm, updateText)
+		const c = yield* processEval(b.notation, a.tokensElmList, b.notationElmList, resultStackElm, updateText, isPN)
 		if (c.error) return errorText(c.message)
 
 		updateText(`Output: ${c.output}`)
@@ -149,10 +164,11 @@ function* processNotationBuilder(
 	notationElm: Element,
 	opstackElm: Element,
 	notationLog: Element,
-	update: UpdateFunc
+	update: UpdateFunc,
+	isPN: boolean
 ) {
 	// loop notation builder
-	let notationItr = mathParser.iterateBuildRPN(tokens)[Symbol.iterator]()
+	let notationItr = mathParser.iterateBuildNotation(tokens, isPN)[Symbol.iterator]()
 	let notationItrRes
 	const notationElmList = new Map<MathParser.Token, Element>()
 	while (!(notationItrRes = notationItr.next()).done) {
@@ -273,9 +289,10 @@ function* processEval(
 	tokensElmList: TokensElmList,
 	notationElmList: TokensElmList,
 	resultStackElm: Element,
-	update: UpdateFunc
+	update: UpdateFunc,
+	isPN: boolean
 ) {
-	let evalIterator = mathParser.iterateEvaluateRPN(notation)[Symbol.iterator]()
+	let evalIterator = mathParser.iterateEvaluateNotation(notation, isPN)[Symbol.iterator]()
 	let evalItrRes
 	while (!(evalItrRes = evalIterator.next()).done) {
 		const { value, valueStack, type, token, inner } = evalItrRes.value
@@ -303,22 +320,26 @@ function* processEval(
 				elm.classList.remove('token-hl-blue')
 			} break
 			case 'operation': {
-				update(`${valueStack.at(-2)} ${token.token} ${valueStack.at(-1)} = ${value}`)
+				let lvalue = valueStack.at(-2)
+				let rvalue = valueStack.at(-1)
+				if (isPN) [lvalue, rvalue] = [rvalue, lvalue]
+
+				update(`${lvalue} ${token.token} ${rvalue} = ${value}`)
 
 				const elm = <span>{value}</span>
 				resultStackElm.appendChild(elm)
 				const child = resultStackElm.children
-				const lvalue = child.item(child.length-3)
-				const rvalue = child.item(child.length-2)
+				let lvalueElm = child.item(child.length-3)
+				let rvalueElm = child.item(child.length-2)
 
 				elm.classList.add('token-hl-blue')
-				lvalue?.classList.add('token-hl-red')
-				rvalue?.classList.add('token-hl-red')
+				lvalueElm?.classList.add('token-hl-red')
+				rvalueElm?.classList.add('token-hl-red')
 				yield
 
 				elm.classList.add('token-hl-blue')
-				lvalue?.classList.remove('token-hl-red')
-				rvalue?.classList.remove('token-hl-red')
+				lvalueElm?.classList.remove('token-hl-red')
+				rvalueElm?.classList.remove('token-hl-red')
 			} break
 		}
 
