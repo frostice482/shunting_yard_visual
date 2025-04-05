@@ -117,11 +117,13 @@ details {
 	margin: 0 1.75px;
 }
 
-.token-error { color: red; text-decoration: orange wavy underline; }
 .token-number { color: #7fb; }
 .token-variable { color: #55f; }
 .token-funcCall { color: #ff7; }
 .token-operator {}
+
+.token-warn { background: #b975; text-decoration: yellow wavy underline; }
+.token-error { background: #b777; text-decoration: red wavy underline; }
 
 .token-inactive { color: #bbb }
 .token-hl { background: #fff3; text-decoration: #fff underline; }

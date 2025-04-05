@@ -94,13 +94,15 @@ function* process() {
 	const b = yield* processNotationBuilder(a.tokens, a.tokensElmList, notationElm, opstackElm, notationLog, updateText)
 	if (b.error) return errorText(b.message)
 
-	if (b.evaluable) {
+	const e = mathParser.isEvaluable(a.tokens)
+	if (e === true) {
 		const c = yield* processEval(b.notation, a.tokensElmList, b.notationElmList, resultStackElm, updateText)
 		if (c.error) return errorText(c.message)
 
 		updateText(`Output: ${c.output}`)
 	} else {
-		updateText('Output not evaluable', '')
+		a.tokensElmList.get(e)?.classList.add('token-warn')
+		updateText('Output not evaluable', 'Unknown function / constant')
 	}
 
 	function updateText(header: string, description = '') {
@@ -262,8 +264,7 @@ function* processNotationBuilder(
 	return {
 		error: false as false,
 		notationElmList,
-		notation,
-		evaluable: nodeRes.isEvaluable
+		notation
 	}
 }
 

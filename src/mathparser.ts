@@ -123,10 +123,24 @@ export class MathParser {
 		return getReturnValue(this.internalEvaluateRPN(rpn))
 	}
 
+	isEvaluable(tokens: ArrayLike<MathParser.Token>): true | MathParser.Token {
+		for (let i = 0; i < tokens.length; i++) {
+			const tok = tokens[i]!
+			switch (tok.source) {
+				case 'variable':
+					if (this.constants[tok.token] === undefined) return tok
+				break
+				case 'funcCall':
+					if (this.functions[tok.token] === undefined) return tok
+				break
+			}
+		}
+		return true
+	}
+
 	protected *internalBuildRPN(tokens: ArrayLike<MathParser.Token>, stepping = false): Generator<MathParser.NotationStep, MathParser.NotationResult> {
 		const opstack: MathParser.Token[] = []
 		const rpn: MathParser.Token[] = []
-		let evaluable = true
 
 		const bracketStack: number[] = []
 
@@ -138,7 +152,6 @@ export class MathParser {
 				case 'number':
 				case 'variable':
 				case 'funcCall':
-					if (token.source === 'variable' && this.constants[token.token] === undefined) evaluable = false
 					rpn.push(token)
 					if (stepping) yield step('insertValue')
 
@@ -215,8 +228,7 @@ export class MathParser {
 
 		return {
 			error: false,
-			notation: rpn,
-			isEvaluable: evaluable
+			notation: rpn
 		}
 
 		function error(msg: string, index = i, token: MathParser.Token | undefined = tokens[index]): MathParser.NotationError {
@@ -383,7 +395,6 @@ export declare namespace MathParser {
 	interface NotationSuccess {
 		error: false
 		notation: Token[]
-		isEvaluable: boolean
 	}
 
 	type NotationResult = NotationError | NotationSuccess
