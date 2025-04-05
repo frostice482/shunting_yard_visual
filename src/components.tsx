@@ -75,11 +75,12 @@ export function TokenList(opts: TokenListOptions) {
 }
 
 export function Table(opts: TableOptions) {
-	const { colWidths, headTitles, fillX, noStyle, headUseHr, ...table } = opts
+	const { colWidths, headTitles, fillX, noStyle, headUseHr, rowHoverEffects, ...table } = opts
 	const tableElm = jsx('table', table)
 
 	if (!noStyle) tableElm.classList.add('styled')
 	if (fillX) tableElm.classList.add('fill-x')
+	if (rowHoverEffects) tableElm.classList.add('hover')
 
 	if (colWidths)
 		tableElm.append(<colgroup>{colWidths.map(v => <col style={{width: v}}/>)}</colgroup>)
