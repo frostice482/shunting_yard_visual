@@ -22,7 +22,17 @@ const links = [
 document.body.append(<>
 	<div class="flex-col align-center gap-8">
 		<div class="fill-x flex-row">
-			Input: <input class="fill-x" type="text" onChange={inputExpr.input} value={inputExpr()}/>
+			Input: <input
+				class="fill-x"
+				type="text"
+				value={inputExpr()}
+				onChange={inputExpr.input}
+				onKeyDown={ev => {
+					if (ev.key !== 'Enter') return
+					ev.preventDefault()
+					startProcess()
+				}}
+			/>
 		</div>
 		<div class="flex-row gap-8">
 			<span>
@@ -103,7 +113,7 @@ function* process() {
 
 		<details class="fill-x">
 			<summary>{isPN ? 'PN' : 'RPN'} Log</summary>
-			<Table fillX colWidths={['5%', '40%', '15%', '15%', '25%']} headTitles={['Input', 'RPN', 'Operator Stack', 'Action', 'Description']}>
+			<Table fillX colWidths={['5%', '40%', '15%', '15%', '25%']} headTitles={['Input', isPN ? 'PN (Reversed)' : 'RPN', 'Operator Stack', 'Action', 'Description']}>
 				{notationLog}
 			</Table>
 		</details>
