@@ -54,10 +54,10 @@ function step() {
 }
 
 function* process() {
-	const tokensElm = TokenList()
-	const notationElm = TokenList()
-	const opstackElm = TokenList()
-	const resultStackElm = TokenList()
+	const tokensElm = TokenList({})
+	const notationElm = TokenList({})
+	const opstackElm = TokenList({})
+	const resultStackElm = TokenList({})
 	const notationLog = <tbody/>
 
 	const text = textState()
@@ -223,8 +223,8 @@ function* processNotationBuilder(
 
 		notationLog.append(<tr>
 			<td>{insertingToken && <Token token={insertingToken}/>}</td>
-			<td><TokenList tokens={notation}/></td>
-			<td><TokenList tokens={opstack}/></td>
+			<td><TokenList tokenOptions={{funcCall: true}} tokens={notation}/></td>
+			<td><TokenList tokenOptions={{funcCall: true}} tokens={opstack}/></td>
 			<td>{actionDesc}</td>
 			<td>{description}</td>
 		</tr>)

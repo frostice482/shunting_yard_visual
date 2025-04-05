@@ -75,6 +75,10 @@ details {
 	}
 }
 
+.commasep > *:not(:last-child)::after {
+	content: ',';
+}
+
 .fill, .fill-x { width: 100%; }
 .fill, .fill-y { height: 100%; }
 

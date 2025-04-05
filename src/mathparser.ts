@@ -177,13 +177,8 @@ export class MathParser {
 					const lastBracket = bracketStack.pop()
 					if (lastBracket === undefined) return error(`Unexpected ")"`)
 
-					let lastOp
-					while ((lastOp = opstack.pop()) && lastOp.source !== 'openBracket') {
-						rpn.push(lastOp)
-						if (stepping) yield step('popMoveOpStack', 'Pop until open bracket is found', lastOp)
-					}
-					if (!lastOp) return error(`Expecting "(" at operator stack, got null`)
-					if (stepping) yield step('popOpStack', 'Open bracket is not included in RPN', lastOp)
+					const r = yield* popStackUntilBracket(true)
+					if (r) return r
 
 					const fnCall = rpn[lastBracket-1]
 					if (fnCall?.source === 'funcCall') {
@@ -198,13 +193,8 @@ export class MathParser {
 					const fnCall = rpn[lastBracket-1]
 					if (!fnCall || fnCall.source !== 'funcCall') return error(`Unexpected ","`)
 
-					let lastOp
-					while ((lastOp = opstack.at(-1)) && lastOp.source !== 'openBracket') {
-						rpn.push(lastOp)
-						opstack.pop()
-						if (stepping) yield step('popMoveOpStack', 'Pop until open bracket is found', lastOp)
-					}
-					if (!lastOp) return error(`Expecting "(" at operator stack, got null`)
+					const r = yield* popStackUntilBracket(false)
+					if (r) return r
 
 					fnCall.params.push(rpn.splice(lastBracket))
 				} break
@@ -247,6 +237,20 @@ export class MathParser {
 				token,
 				insertingToken: tokens[i],
 				description: description
+			}
+		}
+
+		function* popStackUntilBracket(popOpen = false) {
+			let lastOp
+			while ((lastOp = opstack.at(-1)) && lastOp.source !== 'openBracket') {
+				rpn.push(lastOp)
+				opstack.pop()
+				if (stepping) yield step('popMoveOpStack', 'Pop until open bracket is found', lastOp)
+			}
+			if (!lastOp) return error(`Expecting "(" at operator stack, got null`)
+			if (popOpen) {
+				opstack.pop()
+				if (stepping) yield step('popOpStack', 'Open bracket is not included in RPN', lastOp)
 			}
 		}
 	}

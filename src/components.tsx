@@ -3,7 +3,7 @@ import { HTML } from "jsx-dom"
 import { jsx, JSX } from "jsx-dom/jsx-runtime"
 import type { MathParser } from "./mathparser"
 
-export function Tab({name, nostyle, ...btn}: TabBtnOptions & btn) {
+export function Tab({name, nostyle, ...btn}: TabBtnOptions) {
 	const btnElm = jsx('button', btn)
 	if (!nostyle) btnElm.classList.add('tab')
 	if (name) {
@@ -13,7 +13,7 @@ export function Tab({name, nostyle, ...btn}: TabBtnOptions & btn) {
 	return btnElm
 }
 
-export function StateButton(opts: StateButtonOptions & Omit<btn, 'onClick'>) {
+export function StateButton(opts: StateButtonOptions) {
 	let {
 		textState: textStateProp = '',
 		once,
@@ -46,17 +46,35 @@ export function StateButton(opts: StateButtonOptions & Omit<btn, 'onClick'>) {
 	return button
 }
 
-export function Token({ token, inactive = false }: {token: MathParser.Token, inactive?: boolean}) {
-	const e = <span class={'token-'+token.source}>{token.token}</span> as HTMLElement
+export function Token(opts: TokenOptions) {
+	const { token, inactive = false, funcCall = false, ...span } = opts
+
+	const e = jsx('span', span)
+	e.classList.add('token-'+token.source)
+	if (e.childNodes.length === 0) e.append(token.token)
+
 	if (inactive) e.classList.add('token-inactive')
+
+	if (token.source === 'funcCall' && funcCall) {
+		e.append(<span class="commasep" style={{color: 'white'}}>(
+			{token.params.map(v => <span class="tokens-list">{v.map(token => <Token funcCall token={token}/>)}</span>)}
+		)</span>)
+	}
+
 	return e
 }
 
-export function TokenList({tokens}: {tokens?: readonly MathParser.Token[]} = {}) {
-	return <code class="tokens-list">{tokens?.map(v => <Token token={v}/>)}</code> as HTMLElement
+export function TokenList(opts: TokenListOptions) {
+	const { tokens, tokenOptions, ...code } = opts
+
+	const e = jsx('code', code)
+	e.classList.add('tokens-list')
+	if (tokens) e.append(...tokens.map(v => <Token {...tokenOptions} token={v}/>))
+
+	return e
 }
 
-export function Table(opts: table & TableOpts) {
+export function Table(opts: TableOptions) {
 	const { colWidths, headTitles, fillX, noStyle, headUseHr, ...table } = opts
 	const tableElm = jsx('table', table)
 
@@ -80,15 +98,28 @@ export function RowNameValue(name: string, elm: Node) {
 	</tr>
 }
 
+type span = JSX.IntrinsicElements['button']
+type code = JSX.IntrinsicElements['code']
 type btn = JSX.IntrinsicElements['button']
 type table = JSX.IntrinsicElements['table']
 
-export interface TabBtnOptions {
+export interface TabBtnOptions extends btn {
 	name?: string
 	nostyle?: boolean
 }
 
-export interface StateButtonOptions {
+export interface TokenOptions extends span {
+	token: MathParser.Token
+	inactive?: boolean
+	funcCall?: boolean
+}
+
+export interface TokenListOptions extends code  {
+	tokens?: readonly MathParser.Token[]
+	tokenOptions?: Omit<TokenOptions, 'token'>
+}
+
+export interface StateButtonOptions extends Omit<btn, 'onClick'> {
 	textState?: ValueState<Text, string | null> | string
 	once?: boolean
 	condition?: (this: HTML.Button) => unknown
@@ -96,7 +127,7 @@ export interface StateButtonOptions {
 	onClickError?: (this: HTML.Button, err: unknown) => void
 }
 
-export interface TableOpts {
+export interface TableOptions extends table {
 	colWidths?: readonly string[],
 	headTitles?: readonly (string | Node)[],
 	headUseHr?: boolean
