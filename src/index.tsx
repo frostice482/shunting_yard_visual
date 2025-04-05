@@ -154,7 +154,7 @@ function* processNotationBuilder(
 	let notationItrRes
 	const notationElmList = new Map<MathParser.Token, Element>()
 	while (!(notationItrRes = notationItr.next()).done) {
-		const { type, description, token, insertingToken, notation, opstack, inner } = notationItrRes.value
+		const { type, description, token, insertingToken, notation, opstack } = notationItrRes.value
 		let elm = notationElmList.get(token)
 		if (!elm) notationElmList.set(token, elm = <Token token={token}/>)
 		const tokElm = tokensElmList.get(token)!
@@ -179,10 +179,6 @@ function* processNotationBuilder(
 		// update notation & opstack
 		notationElm.replaceChildren(...notation.map(v => notationElmList.get(v) ?? ''))
 		opstackElm.replaceChildren(...opstack.map(v => notationElmList.get(v) ?? ''))
-		if (inner) {
-			notationElm.prepend(<span>...</span>)
-			opstackElm.prepend(<span>...</span>)
-		}
 
 		let actionDesc = ''
 		switch (type) {
@@ -227,8 +223,8 @@ function* processNotationBuilder(
 
 		notationLog.append(<tr>
 			<td>{insertingToken && <Token token={insertingToken}/>}</td>
-			<td>{inner && '...'}<TokenList tokens={notation}/></td>
-			<td>{inner && '...'}<TokenList tokens={opstack}/></td>
+			<td><TokenList tokens={notation}/></td>
+			<td><TokenList tokens={opstack}/></td>
 			<td>{actionDesc}</td>
 			<td>{description}</td>
 		</tr>)

@@ -145,6 +145,7 @@ declare namespace Tokenizer {
 
 	interface Token extends TokenMin {
 		match: RegExpMatchArray
+		[k: string]: any
 	}
 
 	interface Success<T = Token> {
