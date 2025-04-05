@@ -10,6 +10,7 @@ let updateInterval = inputState<number>(100)
 let paused = false
 let prm = new PromiseController<void>()
 let mode = inputState<'rpn' | 'pn'>('rpn')
+let abort = new AbortController()
 
 const links = [
 	['Shunting Yard', 'https://en.wikipedia.org/wiki/Shunting_yard_algorithm'],
@@ -56,7 +57,12 @@ document.body.append(<>
 </>)
 
 async function startProcess() {
+	abort.abort()
+	abort = new AbortController
+
+	const curAbort = abort
 	for (const _ of process()) {
+		if (curAbort.signal.aborted) return
 		if (paused) await prm
 		else await sleep(updateInterval())
 	}
