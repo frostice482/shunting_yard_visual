@@ -60,6 +60,9 @@ table.styled {
 	& > tbody > tr:nth-child(2n) {
 		background: #ffffff0b;
 	}
+	&.hover > tbody > tr:hover {
+		background: #bbbbff22;
+	}
 	& > :is(tbody, tfoot) > tr > td {
 		padding: 1px 4px;
 	}

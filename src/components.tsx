@@ -132,5 +132,6 @@ export interface TableOptions extends table {
 	headTitles?: readonly (string | Node)[],
 	headUseHr?: boolean
 	fillX?: boolean
+	rowHoverEffects?: boolean
 	noStyle?: boolean
 }

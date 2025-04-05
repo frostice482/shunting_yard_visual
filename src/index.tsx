@@ -113,7 +113,11 @@ function* process() {
 
 		<details class="fill-x">
 			<summary>{isPN ? 'PN' : 'RPN'} Log</summary>
-			<Table fillX colWidths={['5%', '40%', '15%', '15%', '25%']} headTitles={['Input', isPN ? 'PN (Reversed)' : 'RPN', 'Operator Stack', 'Action', 'Description']}>
+			<Table fillX
+				rowHoverEffects
+				colWidths={['5%', '45%', '10%', '10%', '5%', '25%']}
+				headTitles={['Input', isPN ? 'PN (Reversed)' : 'RPN', 'Operator Stack', 'Action', 'Op.', 'Description']}
+			>
 				{notationLog}
 			</Table>
 		</details>
@@ -218,7 +222,7 @@ function* processNotationBuilder(
 		let actionDesc = ''
 		switch (type) {
 			case 'lookup':
-				actionDesc = ''
+				actionDesc = 'lookup operator'
 				update('Lookup operator', description)
 				yield
 			break
@@ -256,23 +260,23 @@ function* processNotationBuilder(
 			} break
 		}
 
-		notationLog.append(<tr>
-			<td
-				onMouseEnter={() => {
-					elm.classList.add('token-hl')
-					tokElm.classList.add('token-hl')
-					if (insTokElm && insTokElm !== tokElm) insTokElm.classList.add('token-hl-blue')
-				}}
-				onMouseLeave={() => {
-					elm.classList.remove('token-hl')
-					tokElm.classList.remove('token-hl')
-					if (insTokElm && insTokElm !== tokElm) insTokElm.classList.remove('token-hl-blue')
-				}}>
-				{insertingToken && <Token token={insertingToken}/>}
-			</td>
+		if (type !== 'lookup') notationLog.append(<tr
+			onMouseEnter={() => {
+				elm.classList.add('token-hl')
+				tokElm.classList.add('token-hl')
+				if (insTokElm && insTokElm !== tokElm) insTokElm.classList.add('token-hl-blue')
+			}}
+			onMouseLeave={() => {
+				elm.classList.remove('token-hl')
+				tokElm.classList.remove('token-hl')
+				if (insTokElm && insTokElm !== tokElm) insTokElm.classList.remove('token-hl-blue')
+			}}
+		>
+			<td>{insertingToken && <Token token={insertingToken}/>}</td>
 			<td><TokenList tokenOptions={{funcCall: true}} tokens={notation}/></td>
 			<td><TokenList tokenOptions={{funcCall: true}} tokens={opstack}/></td>
 			<td>{actionDesc}</td>
+			<td><Token token={token}/></td>
 			<td>{description}</td>
 		</tr>)
 
