@@ -181,7 +181,7 @@ export class MathParser {
 					if (r) return r
 
 					const fnCall = rpn[lastBracket-1]
-					if (fnCall?.source === 'funcCall') {
+					if (fnCall?.source === 'funcCall' && bracketStack.at(-1) !== lastBracket) {
 						fnCall.params.push(rpn.splice(lastBracket))
 						if (stepping) yield step('updateParams', undefined, fnCall)
 					}
