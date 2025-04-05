@@ -158,6 +158,7 @@ function* processNotationBuilder(
 		let elm = notationElmList.get(token)
 		if (!elm) notationElmList.set(token, elm = <Token token={token}/>)
 		const tokElm = tokensElmList.get(token)!
+		const insTokElm = insertingToken && tokensElmList.get(insertingToken)
 
 		if (type === 'updateParams' && token.source === 'funcCall') {
 			const paramList = []
@@ -222,7 +223,19 @@ function* processNotationBuilder(
 		}
 
 		notationLog.append(<tr>
-			<td>{insertingToken && <Token token={insertingToken}/>}</td>
+			<td
+				onMouseEnter={() => {
+					elm.classList.add('token-hl')
+					tokElm.classList.add('token-hl')
+					if (insTokElm && insTokElm !== tokElm) insTokElm.classList.add('token-hl-blue')
+				}}
+				onMouseLeave={() => {
+					elm.classList.remove('token-hl')
+					tokElm.classList.remove('token-hl')
+					if (insTokElm && insTokElm !== tokElm) insTokElm.classList.remove('token-hl-blue')
+				}}>
+				{insertingToken && <Token token={insertingToken}/>}
+			</td>
 			<td><TokenList tokenOptions={{funcCall: true}} tokens={notation}/></td>
 			<td><TokenList tokenOptions={{funcCall: true}} tokens={opstack}/></td>
 			<td>{actionDesc}</td>
