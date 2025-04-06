@@ -6,9 +6,17 @@ import PromiseController from "./lib/prmctrl";
 
 const inputExpr = inputState<string>('(-3+1)-(-1*-8)*(8/-4)+2/8*4-16/4+4')
 const resultElm = nodeState()
-let updateInterval = inputState<number>(100)
-let paused = valueState<boolean>(false)
+let updateInterval = inputState<number>(100, (n, p) => {
+	if (proc) proc.interval = n
+	return n
+})
+let paused = valueState<boolean>(false, (n, p) => {
+	if (n) proc?.pause()
+	else proc?.resume()
+	return n
+})
 let mode = inputState<'rpn' | 'pn'>('rpn')
+let inputType = inputState<'infix' | 'eval'>('infix')
 let proc: Processor | undefined
 
 const links = [
@@ -36,9 +44,7 @@ document.body.append(<>
 		</div>
 		<div class="flex-row gap-8">
 			<span>
-				Interval:
-				<input style={{width: '60px'}} type="number" min={1} onChange={updateInterval.input} value={updateInterval()}/>
-				ms
+				Interval: <input style={{width: '60px'}} type="number" min={1} onChange={updateInterval.input} value={updateInterval()}/> ms
 			</span>
 			<span>
 				Mode:
@@ -47,10 +53,16 @@ document.body.append(<>
 					<option value="pn">PN</option>
 				</select>
 			</span>
+			<span>
+				Type:
+				<select onChange={inputType.input} value={inputType()}>
+					<option value="infix">Infix</option>
+					<option value="eval">Evaluate</option>
+				</select>
+			</span>
 			<button onClick={start}>start</button>
 			<StateButton textState="pause" onClick={(ev, state) => {
 				const pause = paused(!paused())
-				if (!pause) step()
 				state(pause ? 'resume' : 'pause')
 			}}/>
 			<button onClick={step}>step</button>
@@ -73,20 +85,22 @@ function step() {
 function start() {
 	proc?.abort()
 
-	proc = new Processor(inputExpr(), mode() === 'pn')
-	proc.paused = paused
-	proc.interval = updateInterval
+	proc = new Processor(inputExpr(), mode() === 'pn', inputType() === 'eval')
+	proc.paused = paused()
+	proc.interval = updateInterval()
 	resultElm(proc.render())
 	proc.startProcess()
 }
 
 class Processor {
-	constructor(input: string, isPN = false) {
+	constructor(input: string, isPN = false, isEval = false) {
 		this.input = input
 		this.isPN = isPN
+		this.isEval = isEval
 	}
 	input: string
 	isPN: boolean
+	isEval: boolean
 
 	tokensElm = TokenList({})
 	notationElm = TokenList({})
@@ -105,26 +119,43 @@ class Processor {
 	notationElmList: TokensElmList = new Map
 
 	aborted = false
-	paused = valueState<boolean>(false)
-	interval = valueState<number>(100)
+	done = false
+	paused = false
+	interval = 100
 	stepPrm = new PromiseController<void>()
 
 	async startProcess() {
-		for (const _ of this.process()) {
-			if (this.aborted) return
-			if (this.paused()) await this.stepPrm
-			else await Promise.race([sleep(updateInterval()), this.stepPrm])
+		try {
+			for (const _ of this.process()) {
+				if (this.aborted) return
+				if (!this.paused) await Promise.race([sleep(updateInterval()), this.stepPrm])
+				if (this.paused) await this.stepPrm
+			}
+		} catch(e) {
+			this.errorTextState(e instanceof Error ? e.toString() + '\n' + e.stack : String(e))
 		}
+		this.done = true
+	}
+
+	pause() {
+		if (this.paused) return
+		this.paused = true
+	}
+
+	resume() {
+		if (!this.paused) return
+		this.step()
+		this.paused = false
 	}
 
 	step() {
-		if (!this.paused()) return
+		if (!this.paused) return
 		this.stepPrm.resolve()
 		this.stepPrm = new PromiseController
 	}
 
 	abort() {
-		if (this.aborted) return
+		if (this.aborted || this.done) return
 		this.aborted = true
 		this.stepPrm.reject(Error('aborted'))
 	}
@@ -141,8 +172,8 @@ class Processor {
 		return <Table class="process-table fill" fixed colWidths={['8em', '10px', 'auto', '4em']}>
 			<tbody>
 				{RowNameValue('Input', this.tokensElm, <td>{copyTokens}</td>)}
-				{RowNameValue(this.isPN ? 'PN' : 'RPN', this.notationElm, <td>{copyNotation}</td>)}
-				{RowNameValue('Operator stack', this.opstackElm, <td/>)}
+				{!this.isEval && RowNameValue(this.isPN ? 'PN' : 'RPN', this.notationElm, <td>{copyNotation}</td>)}
+				{!this.isEval && RowNameValue('Operator stack', this.opstackElm, <td/>)}
 				{RowNameValue('Result stack', this.resultStackElm, <td/>)}
 			</tbody>
 		</Table>
@@ -171,39 +202,39 @@ class Processor {
 		return <div class="flex-col process">
 			{this.renderTable()}
 			{this.renderTextDesc()}
-			{this.renderNotationLog()}
+			{!this.isEval && this.renderNotationLog()}
 		</div>
 	}
 
 	*process() {
-		try {
-			const a = yield* this.processTokenParse()
-			if (a !== true) {
-				this.tokensElm.replaceChildren(<span>{this.input.slice(0, a.index)}<span class="token-error">{this.input.slice(a.index)}</span></span>)
-				return this.errorTextState(a.message)
-			}
+		const a = yield* this.processTokenParse()
+		if (a !== true) {
+			this.tokensElm.replaceChildren(<span>{this.input.slice(0, a.index)}<span class="token-error">{this.input.slice(a.index)}</span></span>)
+			return this.errorTextState(a.message)
+		}
 
+		if (!this.isEval) {
 			const b = yield* this.processNotationBuilder()
 			if (b !== true) return this.errorTextState(b.message)
+		} else {
+			this.notation = this.tokens
+		}
 
-			const e = mathParser.isEvaluable(this.tokens)
-			if (e === true) {
-				const c = yield* this.processEval()
-				if (c.error) return this.errorTextState(c.message)
+		const e = mathParser.isEvaluable(this.tokens)
+		if (e === true) {
+			const c = yield* this.processEval()
+			if (c.error) return this.errorTextState(c.message)
 
-				this.updateText(`Output: ${c.output}`)
-			} else {
-				this.tokensElmList.get(e)?.classList.add('token-warn')
-				this.updateText('Output not evaluable', 'Unknown function / constant')
-			}
-		} catch(e) {
-			this.errorTextState(e instanceof Error ? e.toString() + '\n' + e.stack : String(e))
+			this.updateText(`Output: ${c.output}`)
+		} else {
+			this.tokensElmList.get(e)?.classList.add('token-warn')
+			this.updateText('Output not evaluable', 'Unknown function / constant')
 		}
 	}
 
 	*processTokenParse() {
 		// tokenize expression
-		const tokensRes = mathParser.tokenize(this.input)
+		const tokensRes = this.isEval ? mathParser.tokenizeUnruled(this.input) : mathParser.tokenize(this.input)
 		if (tokensRes.error) return tokensRes
 		const tokens = this.tokens = tokensRes.tokens
 
@@ -234,7 +265,7 @@ class Processor {
 			const { type, description, token, insertingToken, notation, opstack } = notationItrRes.value
 			let elm = notationElmList.get(token)
 			if (!elm) notationElmList.set(token, elm = <Token token={token}/>)
-			const tokElm = tokensElmList.get(token)!
+			const tokElm = tokensElmList.get(token)
 			const insTokElm = insertingToken && tokensElmList.get(insertingToken)
 
 			if (type === 'updateParams' && token.source === 'funcCall') {
@@ -252,7 +283,7 @@ class Processor {
 				continue
 			}
 
-			tokElm.classList.add('token-hl')
+			tokElm?.classList.add('token-hl')
 
 			// update notation & opstack
 			notationElm.replaceChildren(...notation.map(v => notationElmList.get(v) ?? ''))
@@ -302,12 +333,12 @@ class Processor {
 			if (type !== 'lookup') notationLog.append(<tr
 				onMouseEnter={() => {
 					elm.classList.add('token-hl')
-					tokElm.classList.add('token-hl')
+					tokElm?.classList.add('token-hl')
 					if (insTokElm && insTokElm !== tokElm) insTokElm.classList.add('token-hl-blue')
 				}}
 				onMouseLeave={() => {
 					elm.classList.remove('token-hl')
-					tokElm.classList.remove('token-hl')
+					tokElm?.classList.remove('token-hl')
 					if (insTokElm && insTokElm !== tokElm) insTokElm.classList.remove('token-hl-blue')
 				}}
 			>
@@ -319,7 +350,7 @@ class Processor {
 				<td>{description}</td>
 			</tr>)
 
-			tokElm.classList.remove('token-hl')
+			tokElm?.classList.remove('token-hl')
 		}
 		const nodeRes = notationItrRes.value
 		if (nodeRes.error) {
@@ -417,3 +448,5 @@ class Processor {
 }
 
 type TokensElmList = Map<MathParser.Token, Element>
+
+Object.assign(globalThis, { mathParser })

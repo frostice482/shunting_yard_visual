@@ -53,6 +53,9 @@ for (const [i, ops] of operatorInit.entries()) {
 	}
 }
 
+const numPattern = /[-+]?\d+(\.\d*)?(e[-+]\d+)?/y
+const varPattern = /[a-z]\w*/yi
+
 const mathTokenizer = new Tokenizer([{
 	name: 'number',
 	pattern: /[-+]?\d+(\.\d*)?(e[-+]\d+)?/y,
@@ -97,6 +100,26 @@ const mathTokenizer = new Tokenizer([{
 	ignore: true
 }], undefined, 'value')
 
+const mathTokenizerUnruled = new Tokenizer([{
+	name: 'number',
+	pattern: numPattern,
+	next: ['next']
+}, {
+	name: 'variable',
+	pattern: varPattern,
+	next: ['next']
+}, {
+	name: 'operatorToken',
+	sourceName: 'operator',
+	pattern: RegExp('', 'y'),
+	next: ['next']
+}, {
+	name: 'next',
+	pattern: /\s*/y,
+	next: ['number', 'variable', 'operatorToken'],
+	ignore: true
+}], undefined, 'next')
+
 const regexEscape = /[+*?\^$\\.[\]{}()|]/g
 const regexCharsetEscape = /[\\\-\]\^]/g
 
@@ -117,10 +140,15 @@ export class MathParser {
 	constants = {...constants}
 	operators = {...operators}
 
-	tokenizer = new Tokenizer(mathTokenizer.syntaxes.values(), mathTokenizer.nextSets, mathTokenizer.entry)
+	tokenizer = mathTokenizer.clone()
+	tokenizerUnruled = mathTokenizerUnruled.clone()
 
 	tokenize(expr: string) {
 		return this.tokenizer.parse(expr) as Tokenizer.Result<MathParser.Token>
+	}
+
+	tokenizeUnruled(expr: string) {
+		return this.tokenizerUnruled.parse(expr) as Tokenizer.Result<MathParser.Token>
 	}
 
 	iterateBuildNotation(tokens: ArrayLike<MathParser.Token>, pn = false) {
@@ -513,7 +541,9 @@ export class MathParser {
 	}
 }
 
-mathTokenizer.syntaxes.get('operatorToken')!.pattern = MathParser.getOperatorRegexPattern(Object.keys(operators))
+const opPattern = MathParser.getOperatorRegexPattern(Object.keys(operators))
+mathTokenizer.syntaxes.get('operatorToken')!.pattern = opPattern
+mathTokenizerUnruled.syntaxes.get('operatorToken')!.pattern = opPattern
 
 console.log(mathTokenizer.syntaxes.get('operatorToken'))
 

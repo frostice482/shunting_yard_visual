@@ -32,7 +32,7 @@ class Tokenizer {
 		return this
 	}
 
-	parse(arg: string): Tokenizer.Success | Tokenizer.Error {
+	parse(arg: string, sameIndexLimit = 100): Tokenizer.Success | Tokenizer.Error {
 		const {map, nextSet} = this.buildSyntaxMap()
 		let syntaxes: Tokenizer.SyntaxMapped[]
 
@@ -45,7 +45,7 @@ class Tokenizer {
 		}
 
 		const tokens: Tokenizer.Token[] = []
-		let i = 0
+		let i = 0, c = 0
 		while (i < arg.length) {
 			if (!syntaxes.length) return error('Expecting EOF')
 
@@ -61,7 +61,13 @@ class Tokenizer {
 					match,
 					token: match[0],
 				}
-				i = syntax.exec?.(match, token, tokens) ?? p.lastIndex
+				const ni = syntax.exec?.(match, token, tokens, arg) ?? p.lastIndex
+				if (ni === i) {
+					if (c++ > sameIndexLimit) throw Error(`infinite loop after ${sameIndexLimit} iterations at index ${i}`)
+				}
+				else c = 0
+
+				i = ni
 				if (!syntax.ignore) tokens.push(token)
 				syntaxes = syntax.next
 				hasMatch = true
@@ -122,6 +128,14 @@ class Tokenizer {
 
 		return {map, nextSet}
 	}
+
+	clone() {
+		return new Tokenizer(
+			Array.from(this.syntaxes.values(), v => ({...v})),
+			Array.from(this.nextSets, ([k, v]) => [k, Array.from(v)] as [string, string[]]),
+			this.entry
+		)
+	}
 }
 
 declare namespace Tokenizer {
@@ -129,7 +143,7 @@ declare namespace Tokenizer {
 		name: string
 		pattern: RegExp
 		next: string[]
-		exec?: (match: RegExpMatchArray, token: Token, tokens: Token[]) => void | number
+		exec?: Exec
 		ignore?: boolean
 		sourceName?: string
 	}
@@ -161,6 +175,8 @@ declare namespace Tokenizer {
 	}
 
 	type Result<T = Token> = Success<T> | Error
+
+	type Exec = (match: RegExpMatchArray, token: Token, tokens: Token[], input: string) => void | number
 }
 
 export default Tokenizer
