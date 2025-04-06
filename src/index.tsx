@@ -1,4 +1,4 @@
-import { inputState, nodeState, textState } from "./lib/state";
+import { inputState, nodeState, textState, valueState } from "./lib/state";
 import mathParser, { MathParser } from "./lib/mathparser";
 import { RowNameValue, StateButton, Table, Token, TokenList } from "./lib/components";
 import { sleep } from "./lib/util";
@@ -7,10 +7,9 @@ import PromiseController from "./lib/prmctrl";
 const inputExpr = inputState<string>('(-3+1)-(-1*-8)*(8/-4)+2/8*4-16/4+4')
 const resultElm = nodeState()
 let updateInterval = inputState<number>(100)
-let paused = false
-let prm = new PromiseController<void>()
+let paused = valueState<boolean>(false)
 let mode = inputState<'rpn' | 'pn'>('rpn')
-let abort = new AbortController()
+let proc: Processor | undefined
 
 const links = [
 	['Shunting Yard', 'https://en.wikipedia.org/wiki/Shunting_yard_algorithm'],
@@ -30,7 +29,7 @@ document.body.append(<>
 				onKeyDown={ev => {
 					if (ev.key !== 'Enter') return
 					ev.preventDefault()
-					startProcess()
+					start()
 				}}
 			/>
 		</div>
@@ -47,11 +46,11 @@ document.body.append(<>
 					<option value="pn">PN</option>
 				</select>
 			</span>
-			<button onClick={startProcess}>start</button>
+			<button onClick={start}>start</button>
 			<StateButton textState="pause" onClick={(ev, state) => {
-				paused = !paused
-				if (!paused) step()
-				state(paused ? 'resume' : 'pause')
+				const pause = paused(!paused())
+				if (!pause) step()
+				state(pause ? 'resume' : 'pause')
 			}}/>
 			<button onClick={step}>step</button>
 		</div>
@@ -66,319 +65,346 @@ document.body.append(<>
 	</footer>
 </>)
 
-async function startProcess() {
-	abort.abort()
-	abort = new AbortController
-
-	const curAbort = abort
-	for (const _ of process()) {
-		if (curAbort.signal.aborted) return
-		if (paused) await prm
-		else await sleep(updateInterval())
-	}
-}
-
 function step() {
-	prm.resolve()
-	prm = new PromiseController
+	proc?.step()
 }
 
-function* process() {
-	const isPN = mode() === 'pn'
-	const tokensElm = TokenList({})
-	const notationElm = TokenList({})
-	const opstackElm = TokenList({})
-	const resultStackElm = TokenList({})
-	const notationLog = <tbody/>
+function start() {
+	proc?.abort()
 
-	const text = textState()
-	const desc = textState()
-	const errorText = textState()
+	proc = new Processor(inputExpr(), mode() === 'pn')
+	proc.paused = paused
+	proc.interval = updateInterval
+	resultElm(proc.render())
+	proc.startProcess()
+}
 
-	resultElm(<div class="flex-col">
-		<Table class="process fill" colWidths={['8em', '10px']}>
+class Processor {
+	constructor(input: string, isPN = false) {
+		this.input = input
+		this.isPN = isPN
+	}
+	input: string
+	isPN: boolean
+
+	tokensElm = TokenList({})
+	notationElm = TokenList({})
+	opstackElm = TokenList({})
+	resultStackElm = TokenList({})
+
+	textState = textState()
+	descState = textState()
+	errorTextState = textState()
+
+	notationLog = document.createElement('tbody')
+
+	tokens: MathParser.Token[] = []
+	notation: MathParser.Token[] = []
+	tokensElmList: TokensElmList = new Map
+	notationElmList: TokensElmList = new Map
+
+	aborted = false
+	paused = valueState<boolean>(false)
+	interval = valueState<number>(100)
+	stepPrm = new PromiseController<void>()
+
+	async startProcess() {
+		for (const _ of this.process()) {
+			if (this.aborted) return
+			if (this.paused()) await this.stepPrm
+			else await Promise.race([sleep(updateInterval()), this.stepPrm])
+		}
+	}
+
+	step() {
+		if (!this.paused()) return
+		this.stepPrm.resolve()
+		this.stepPrm = new PromiseController
+	}
+
+	abort() {
+		if (this.aborted) return
+		this.aborted = true
+		this.stepPrm.reject(Error('aborted'))
+	}
+
+	renderTable() {
+		return <Table class="process-table fill" colWidths={['8em', '10px']}>
 			<tbody>
-				{RowNameValue('Input', tokensElm)}
-				{RowNameValue(isPN ? 'PN' : 'RPN', notationElm)}
-				{RowNameValue('Operator stack', opstackElm)}
-				{RowNameValue('Result stack', resultStackElm)}
+				{RowNameValue('Input', this.tokensElm)}
+				{RowNameValue(this.isPN ? 'PN' : 'RPN', this.notationElm)}
+				{RowNameValue('Operator stack', this.opstackElm)}
+				{RowNameValue('Result stack', this.resultStackElm)}
 			</tbody>
 		</Table>
+	}
 
-		<div class="margin-y">
-			<code class="error">{errorText()}</code>
-			<h3>: {text()}</h3>
-			<small>: {desc()}</small>
+	renderTextDesc() {
+		return <div class="margin-y">
+			<code class="error">{this.errorTextState()}</code>
+			<h3>: {this.textState()}</h3>
+			<small>: {this.descState()}</small>
 		</div>
+	}
 
-		<details class="fill-x">
-			<summary>{isPN ? 'PN' : 'RPN'} Log</summary>
+	renderNotationLog() {
+		return <details class="fill-x">
+			<summary>{this.isPN ? 'PN' : 'RPN'} Log</summary>
 			<Table fillX
 				rowHoverEffects
 				colWidths={['5%', '45%', '10%', '10%', '5%', '25%']}
-				headTitles={['Input', isPN ? 'PN (Reversed)' : 'RPN', 'Operator Stack', 'Action', 'Op.', 'Description']}
-			>
-				{notationLog}
-			</Table>
+				headTitles={['Input', this.isPN ? 'PN (Reversed)' : 'RPN', 'Operator Stack', 'Action', 'Op.', 'Description']}
+			>{this.notationLog}</Table>
 		</details>
-	</div>)
-
-	const a = yield* processTokenParse(tokensElm)
-	if (a.error) return errorText(a.message)
-
-	const b = yield* processNotationBuilder(a.tokens, a.tokensElmList, notationElm, opstackElm, notationLog, updateText, isPN)
-	if (b.error) return errorText(b.message)
-
-	const e = mathParser.isEvaluable(a.tokens)
-	if (e === true) {
-		const c = yield* processEval(b.notation, a.tokensElmList, b.notationElmList, resultStackElm, updateText, isPN)
-		if (c.error) return errorText(c.message)
-
-		updateText(`Output: ${c.output}`)
-	} else {
-		a.tokensElmList.get(e)?.classList.add('token-warn')
-		updateText('Output not evaluable', 'Unknown function / constant')
 	}
 
-	function updateText(header: string, description = '') {
-		text(header)
-		desc(description)
-	}
-}
-
-function* processTokenParse(tokensElm: Element) {
-	// tokenize expression
-	const expr = inputExpr()
-	const tokensRes = mathParser.tokenize(expr)
-	if (tokensRes.error) {
-		tokensElm.replaceChildren(<span>{expr.slice(0, tokensRes.index)}<span class="token-error">{expr.slice(tokensRes.index)}</span></span>)
-		return tokensRes
-	}
-	const tokens = tokensRes.tokens
-
-	// put inactive tokens into result
-	const tokensElmList: TokensElmList = new Map
-	for (const token of tokens) {
-		const elm = <Token token={token} inactive/>
-		tokensElm.append(elm)
-		tokensElmList.set(token, elm)
+	render() {
+		return <div class="flex-col process">
+			{this.renderTable()}
+			{this.renderTextDesc()}
+			{this.renderNotationLog()}
+		</div>
 	}
 
-	// animate tokens
-	for (const elm of tokensElmList.values()) {
-		elm.classList.add('token-hl')
-		yield 'token'
-		elm.classList.remove('token-hl', 'token-inactive')
-	}
-
-	return {
-		error: false as false,
-		tokensElmList: tokensElmList,
-		tokens,
-	}
-}
-
-function* processNotationBuilder(
-	tokens: MathParser.Token[],
-	tokensElmList: TokensElmList,
-	notationElm: Element,
-	opstackElm: Element,
-	notationLog: Element,
-	update: UpdateFunc,
-	isPN: boolean
-) {
-	// loop notation builder
-	let notationItr = mathParser.iterateBuildNotation(tokens, isPN)[Symbol.iterator]()
-	let notationItrRes
-	const notationElmList = new Map<MathParser.Token, Element>()
-	while (!(notationItrRes = notationItr.next()).done) {
-		const { type, description, token, insertingToken, notation, opstack } = notationItrRes.value
-		let elm = notationElmList.get(token)
-		if (!elm) notationElmList.set(token, elm = <Token token={token}/>)
-		const tokElm = tokensElmList.get(token)!
-		const insTokElm = insertingToken && tokensElmList.get(insertingToken)
-
-		if (type === 'updateParams' && token.source === 'funcCall') {
-			const paramList = []
-			let first = true
-			for (const params of token.params) {
-				if (!first) paramList.push(',')
-				for (const param of params) {
-					paramList.push(notationElmList.get(param)!)
-				}
-				first = false
+	*process() {
+		try {
+			const a = yield* this.processTokenParse()
+			if (a !== true) {
+				this.tokensElm.replaceChildren(<span>{this.input.slice(0, a.index)}<span class="token-error">{this.input.slice(a.index)}</span></span>)
+				return this.errorTextState(a.message)
 			}
 
-			notationElmList.set(token, elm = <span class="tokens-list">{elm}({paramList})</span>)
-			continue
+			const b = yield* this.processNotationBuilder()
+			if (b !== true) return this.errorTextState(b.message)
+
+			const e = mathParser.isEvaluable(this.tokens)
+			if (e === true) {
+				const c = yield* this.processEval()
+				if (c.error) return this.errorTextState(c.message)
+
+				this.updateText(`Output: ${c.output}`)
+			} else {
+				this.tokensElmList.get(e)?.classList.add('token-warn')
+				this.updateText('Output not evaluable', 'Unknown function / constant')
+			}
+		} catch(e) {
+			this.errorTextState(e instanceof Error ? e.toString() + '\n' + e.stack : String(e))
 		}
-
-		tokElm.classList.add('token-hl')
-
-		// update notation & opstack
-		notationElm.replaceChildren(...notation.map(v => notationElmList.get(v) ?? ''))
-		opstackElm.replaceChildren(...opstack.map(v => notationElmList.get(v) ?? ''))
-
-		let actionDesc = ''
-		switch (type) {
-			case 'lookup':
-				actionDesc = 'lookup operator'
-				update('Lookup operator', description)
-				yield
-			break
-			case 'insertValue':
-			case 'insertOpStack':
-				actionDesc = type === 'insertValue' ? 'push value' : 'push operator'
-
-				update(type === 'insertValue' ? 'Insert value' : 'Insert operator', description)
-				elm.classList.add('token-hl-blue')
-				yield
-
-				elm.classList.remove('token-hl-blue')
-			break
-			case 'popMoveOpStack': {
-				actionDesc = 'move operator'
-				update('Move last operator to RPN', description)
-
-				const elm2 = opstackElm.appendChild(elm.cloneNode(true))
-				elm2.classList.add('token-hl-red')
-				elm.classList.add('token-hl-blue')
-				yield
-
-				elm2.remove()
-				elm.classList.remove('token-hl-blue')
-			} break
-			case 'popOpStack': {
-				actionDesc = 'move operator'
-				update('Delete last operator', description)
-
-				opstackElm.appendChild(elm)
-				elm.classList.add('token-hl-red')
-				yield
-
-				elm.remove()
-			} break
-		}
-
-		if (type !== 'lookup') notationLog.append(<tr
-			onMouseEnter={() => {
-				elm.classList.add('token-hl')
-				tokElm.classList.add('token-hl')
-				if (insTokElm && insTokElm !== tokElm) insTokElm.classList.add('token-hl-blue')
-			}}
-			onMouseLeave={() => {
-				elm.classList.remove('token-hl')
-				tokElm.classList.remove('token-hl')
-				if (insTokElm && insTokElm !== tokElm) insTokElm.classList.remove('token-hl-blue')
-			}}
-		>
-			<td>{insertingToken && <Token token={insertingToken}/>}</td>
-			<td><TokenList tokenOptions={{funcCall: true}} tokens={notation}/></td>
-			<td><TokenList tokenOptions={{funcCall: true}} tokens={opstack}/></td>
-			<td>{actionDesc}</td>
-			<td><Token token={token}/></td>
-			<td>{description}</td>
-		</tr>)
-
-		tokElm.classList.remove('token-hl')
-	}
-	const nodeRes = notationItrRes.value
-	if (nodeRes.error) {
-		if (nodeRes.token) {
-			notationElmList.get(nodeRes.token)?.classList.add('token-error')
-			tokensElmList.get(nodeRes.token)?.classList.add('token-error')
-		}
-		return nodeRes
 	}
 
-	const notation = nodeRes.notation
-	notationElm.replaceChildren(...notation.map(v => notationElmList.get(v) ?? ''))
-	opstackElm.replaceChildren()
+	*processTokenParse() {
+		// tokenize expression
+		const tokensRes = mathParser.tokenize(this.input)
+		if (tokensRes.error) return tokensRes
+		const tokens = this.tokens = tokensRes.tokens
 
-	update('')
+		// put inactive tokens into result
+		for (const token of tokens) {
+			const elm = <Token token={token} inactive/>
+			this.tokensElm.append(elm)
+			this.tokensElmList.set(token, elm)
+		}
 
-	return {
-		error: false as false,
-		notationElmList,
-		notation
-	}
-}
-
-function* processEval(
-	notation: MathParser.Token[],
-	tokensElmList: TokensElmList,
-	notationElmList: TokensElmList,
-	resultStackElm: Element,
-	update: UpdateFunc,
-	isPN: boolean
-) {
-	let evalIterator = mathParser.iterateEvaluateNotation(notation, isPN)[Symbol.iterator]()
-	let evalItrRes
-	while (!(evalItrRes = evalIterator.next()).done) {
-		const { value, valueStack, type, token, inner } = evalItrRes.value
-		if (type === 'updateStack') {
-			update('')
-			resultStackElm.replaceChildren(...valueStack.map(v => <span>{v}</span>))
-			if (inner) resultStackElm.prepend(<span>...</span>)
+		// animate tokens
+		for (const elm of this.tokensElmList.values()) {
+			elm.classList.add('token-hl')
 			yield
-			continue
+			elm.classList.remove('token-hl', 'token-inactive')
 		}
 
-		const tokElm = notationElmList.get(token)
-		tokElm?.classList.add('token-hl')
-		const elm = tokensElmList.get(token)
-		elm?.classList.add('token-hl')
+		return true
+	}
 
-		switch (type) {
-			case 'insertValue':
-			case 'funcCall': {
-				const elm = <span>{value}</span>
-				resultStackElm.appendChild(elm)
-				elm.classList.add('token-hl-blue')
-				yield
+	*processNotationBuilder() {
+		const {isPN, tokensElmList, notationElm, opstackElm, notationLog, notationElmList} = this
 
-				elm.classList.remove('token-hl-blue')
-			} break
-			case 'operation': {
-				let lvalue = valueStack.at(-2)
-				let rvalue = valueStack.at(-1)
-				if (isPN) [lvalue, rvalue] = [rvalue, lvalue]
+		// loop notation builder
+		let notationItr = mathParser.iterateBuildNotation(this.tokens, isPN)[Symbol.iterator]()
+		let notationItrRes
+		while (!(notationItrRes = notationItr.next()).done) {
+			const { type, description, token, insertingToken, notation, opstack } = notationItrRes.value
+			let elm = notationElmList.get(token)
+			if (!elm) notationElmList.set(token, elm = <Token token={token}/>)
+			const tokElm = tokensElmList.get(token)!
+			const insTokElm = insertingToken && tokensElmList.get(insertingToken)
 
-				update(`${lvalue} ${token.token} ${rvalue} = ${value}`)
+			if (type === 'updateParams' && token.source === 'funcCall') {
+				const paramList = []
+				let first = true
+				for (const params of token.params) {
+					if (!first) paramList.push(',')
+					for (const param of params) {
+						paramList.push(notationElmList.get(param)!)
+					}
+					first = false
+				}
 
-				const elm = <span>{value}</span>
-				resultStackElm.appendChild(elm)
-				const child = resultStackElm.children
-				let lvalueElm = child.item(child.length-3)
-				let rvalueElm = child.item(child.length-2)
+				notationElmList.set(token, elm = <span class="tokens-list">{elm}({paramList})</span>)
+				continue
+			}
 
-				elm.classList.add('token-hl-blue')
-				lvalueElm?.classList.add('token-hl-red')
-				rvalueElm?.classList.add('token-hl-red')
-				yield
+			tokElm.classList.add('token-hl')
 
-				elm.classList.add('token-hl-blue')
-				lvalueElm?.classList.remove('token-hl-red')
-				rvalueElm?.classList.remove('token-hl-red')
-			} break
+			// update notation & opstack
+			notationElm.replaceChildren(...notation.map(v => notationElmList.get(v) ?? ''))
+			opstackElm.replaceChildren(...opstack.map(v => notationElmList.get(v) ?? ''))
+
+			let actionDesc = ''
+			switch (type) {
+				case 'lookup':
+					actionDesc = 'lookup operator'
+					this.updateText('Lookup operator', description)
+					yield
+				break
+				case 'insertValue':
+				case 'insertOpStack':
+					actionDesc = type === 'insertValue' ? 'push value' : 'push operator'
+
+					this.updateText(type === 'insertValue' ? 'Insert value' : 'Insert operator', description)
+					elm.classList.add('token-hl-blue')
+					yield
+
+					elm.classList.remove('token-hl-blue')
+				break
+				case 'popMoveOpStack': {
+					actionDesc = 'move operator'
+					this.updateText('Move last operator to RPN', description)
+
+					const elm2 = opstackElm.appendChild(elm.cloneNode(true))
+					elm2.classList.add('token-hl-red')
+					elm.classList.add('token-hl-blue')
+					yield
+
+					elm2.remove()
+					elm.classList.remove('token-hl-blue')
+				} break
+				case 'popOpStack': {
+					actionDesc = 'move operator'
+					this.updateText('Delete last operator', description)
+
+					opstackElm.appendChild(elm)
+					elm.classList.add('token-hl-red')
+					yield
+
+					elm.remove()
+				} break
+			}
+
+			if (type !== 'lookup') notationLog.append(<tr
+				onMouseEnter={() => {
+					elm.classList.add('token-hl')
+					tokElm.classList.add('token-hl')
+					if (insTokElm && insTokElm !== tokElm) insTokElm.classList.add('token-hl-blue')
+				}}
+				onMouseLeave={() => {
+					elm.classList.remove('token-hl')
+					tokElm.classList.remove('token-hl')
+					if (insTokElm && insTokElm !== tokElm) insTokElm.classList.remove('token-hl-blue')
+				}}
+			>
+				<td>{insertingToken && <Token token={insertingToken}/>}</td>
+				<td><TokenList tokenOptions={{funcCall: true}} tokens={notation}/></td>
+				<td><TokenList tokenOptions={{funcCall: true}} tokens={opstack}/></td>
+				<td>{actionDesc}</td>
+				<td><Token token={token}/></td>
+				<td>{description}</td>
+			</tr>)
+
+			tokElm.classList.remove('token-hl')
+		}
+		const nodeRes = notationItrRes.value
+		if (nodeRes.error) {
+			if (nodeRes.token) {
+				notationElmList.get(nodeRes.token)?.classList.add('token-error')
+				tokensElmList.get(nodeRes.token)?.classList.add('token-error')
+			}
+			return nodeRes
 		}
 
-		tokElm?.classList.remove('token-hl')
-		elm?.classList.remove('token-hl')
-	}
-	const evalRes = evalItrRes.value
-	if (typeof evalRes !== 'number') {
-		notationElmList.get(evalRes.token)?.classList.add('token-error')
-		tokensElmList.get(evalRes.token)?.classList.add('token-error')
+		const notation = this.notation = nodeRes.notation
+		notationElm.replaceChildren(...notation.map(v => notationElmList.get(v) ?? ''))
+		opstackElm.replaceChildren()
 
-		return evalRes
+		this.updateText()
+
+		return true
 	}
 
-	return {
-		error: false as false,
-		output: evalRes
+	*processEval() {
+		const { isPN, resultStackElm, notationElmList, tokensElmList, notation } = this
+
+		let evalIterator = mathParser.iterateEvaluateNotation(notation, isPN)[Symbol.iterator]()
+		let evalItrRes
+		while (!(evalItrRes = evalIterator.next()).done) {
+			const { value, valueStack, type, token, inner } = evalItrRes.value
+			if (type === 'updateStack') {
+				this.updateText()
+				resultStackElm.replaceChildren(...valueStack.map(v => <span>{v}</span>))
+				if (inner) resultStackElm.prepend(<span>...</span>)
+				yield
+				continue
+			}
+
+			const tokElm = notationElmList.get(token)
+			tokElm?.classList.add('token-hl')
+			const elm = tokensElmList.get(token)
+			elm?.classList.add('token-hl')
+
+			switch (type) {
+				case 'insertValue':
+				case 'funcCall': {
+					const elm = <span>{value}</span>
+					resultStackElm.appendChild(elm)
+					elm.classList.add('token-hl-blue')
+					yield
+
+					elm.classList.remove('token-hl-blue')
+				} break
+				case 'operation': {
+					let lvalue = valueStack.at(-2)
+					let rvalue = valueStack.at(-1)
+					if (isPN) [lvalue, rvalue] = [rvalue, lvalue]
+
+					this.updateText(`${lvalue} ${token.token} ${rvalue} = ${value}`)
+
+					const elm = <span>{value}</span>
+					resultStackElm.appendChild(elm)
+					const child = resultStackElm.children
+					let lvalueElm = child.item(child.length-3)
+					let rvalueElm = child.item(child.length-2)
+
+					elm.classList.add('token-hl-blue')
+					lvalueElm?.classList.add('token-hl-red')
+					rvalueElm?.classList.add('token-hl-red')
+					yield
+
+					elm.classList.remove('token-hl-blue')
+					lvalueElm?.classList.remove('token-hl-red')
+					rvalueElm?.classList.remove('token-hl-red')
+				} break
+			}
+
+			tokElm?.classList.remove('token-hl')
+			elm?.classList.remove('token-hl')
+		}
+		const evalRes = evalItrRes.value
+		if (typeof evalRes !== 'number') {
+			notationElmList.get(evalRes.token)?.classList.add('token-error')
+			tokensElmList.get(evalRes.token)?.classList.add('token-error')
+
+			return evalRes
+		}
+
+		return {
+			error: false as false,
+			output: evalRes
+		}
+	}
+
+	updateText(title = '', desc = '') {
+		this.textState(title)
+		this.descState(desc)
 	}
 }
 
 type TokensElmList = Map<MathParser.Token, Element>
-type UpdateFunc = (text: string, desc?: string) => void
