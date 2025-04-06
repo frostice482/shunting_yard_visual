@@ -1,8 +1,8 @@
-import { inputState, nodeState, textState } from "./state";
-import mathParser, { MathParser } from "./mathparser";
-import { RowNameValue, StateButton, Table, Token, TokenList } from "./components";
-import { sleep } from "./util";
-import PromiseController from "./prmctrl";
+import { inputState, nodeState, textState } from "./lib/state";
+import mathParser, { MathParser } from "./lib/mathparser";
+import { RowNameValue, StateButton, Table, Token, TokenList } from "./lib/components";
+import { sleep } from "./lib/util";
+import PromiseController from "./lib/prmctrl";
 
 const inputExpr = inputState<string>('(-3+1)-(-1*-8)*(8/-4)+2/8*4-16/4+4')
 const resultElm = nodeState()
