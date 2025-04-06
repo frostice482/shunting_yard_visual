@@ -129,12 +129,20 @@ class Processor {
 	}
 
 	renderTable() {
-		return <Table class="process-table fill" colWidths={['8em', '10px']}>
+		const copyNotation = <button onClick={() => {
+			navigator.clipboard.writeText(this.notation.map(v => v.token.trim()).join(' '))
+		}}>copy</button>
+
+		const copyTokens = <button onClick={() => {
+			navigator.clipboard.writeText(this.tokens.map(v => v.token.trim()).join(' '))
+		}}>copy</button>
+
+		return <Table class="process-table fill" fixed colWidths={['8em', '10px', 'auto', '4em']}>
 			<tbody>
-				{RowNameValue('Input', this.tokensElm)}
-				{RowNameValue(this.isPN ? 'PN' : 'RPN', this.notationElm)}
-				{RowNameValue('Operator stack', this.opstackElm)}
-				{RowNameValue('Result stack', this.resultStackElm)}
+				{RowNameValue('Input', this.tokensElm, <td>{copyTokens}</td>)}
+				{RowNameValue(this.isPN ? 'PN' : 'RPN', this.notationElm, <td>{copyNotation}</td>)}
+				{RowNameValue('Operator stack', this.opstackElm, <td/>)}
+				{RowNameValue('Result stack', this.resultStackElm, <td/>)}
 			</tbody>
 		</Table>
 	}

@@ -75,12 +75,13 @@ export function TokenList(opts: TokenListOptions) {
 }
 
 export function Table(opts: TableOptions) {
-	const { colWidths, headTitles, fillX, noStyle, headUseHr, rowHoverEffects, ...table } = opts
+	const { colWidths, headTitles, fillX, noStyle, headUseHr, rowHoverEffects, fixed, ...table } = opts
 	const tableElm = jsx('table', table)
 
 	if (!noStyle) tableElm.classList.add('styled')
 	if (fillX) tableElm.classList.add('fill-x')
 	if (rowHoverEffects) tableElm.classList.add('hover')
+	if (fixed) tableElm.style.tableLayout = 'fixed'
 
 	if (colWidths)
 		tableElm.append(<colgroup>{colWidths.map(v => <col style={{width: v}}/>)}</colgroup>)
@@ -91,11 +92,12 @@ export function Table(opts: TableOptions) {
 	return tableElm
 }
 
-export function RowNameValue(name: string, elm: Node) {
+export function RowNameValue(name: string, elm: Node, ...more: Node[]) {
 	return <tr>
 		<td>{name}</td>
 		<td>:</td>
 		<td>{elm}</td>
+		{more}
 	</tr>
 }
 
@@ -135,4 +137,5 @@ export interface TableOptions extends table {
 	fillX?: boolean
 	rowHoverEffects?: boolean
 	noStyle?: boolean
+	fixed?: boolean
 }
