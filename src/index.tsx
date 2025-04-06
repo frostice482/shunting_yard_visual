@@ -29,6 +29,7 @@ document.body.append(<>
 				onKeyDown={ev => {
 					if (ev.key !== 'Enter') return
 					ev.preventDefault()
+					inputExpr(ev.currentTarget.value)
 					start()
 				}}
 			/>
